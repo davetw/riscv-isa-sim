@@ -258,6 +258,33 @@ int fdt_get_next_subnode(void *fdt, int node)
   return fdt_next_subnode(fdt, node);
 }
 
+int fdt_parse_plic(void *fdt, reg_t *plic_addr, reg_t *plic_maxprio, const char *compatible)
+{
+  int nodeoffset, rc, len;
+
+  const fdt32_t* prop_maxprio;
+  const fdt32_t* prop_ndev;
+
+  nodeoffset = fdt_node_offset_by_compatible(fdt, -1, compatible);
+  if (nodeoffset < 0)
+    return nodeoffset;
+
+  rc = fdt_get_node_addr_size(fdt, nodeoffset, plic_addr, NULL, "reg");
+  if (rc < 0 || !plic_addr)
+    return -ENODEV;
+
+  prop_maxprio = (fdt32_t *)fdt_getprop(fdt, nodeoffset, "riscv,max-priority", &len);
+  if (!prop_maxprio || !len)
+      return -EINVAL;
+  *plic_maxprio = *(reg_t *)prop_maxprio;
+
+  prop_ndev = (fdt32_t *)fdt_getprop(fdt, nodeoffset, "riscv,max-priority", &len);
+  if (!prop_ndev || !len)
+      return -EINVAL;
+
+  return 1;
+}
+
 int fdt_parse_clint(void *fdt, reg_t *clint_addr,
                     const char *compatible)
 {

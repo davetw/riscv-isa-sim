@@ -3,6 +3,7 @@
 
 #include "decode.h"
 #include "mmio_plugin.h"
+#include "plic.h"
 #include <cstdlib>
 #include <string>
 #include <map>
@@ -80,6 +81,29 @@ class clint_t : public abstract_device_t {
   uint64_t real_time_ref_usecs;
   mtime_t mtime;
   std::vector<mtimecmp_t> mtimecmp;
+};
+
+class plic_t: public abstract_device_t {
+ public:
+  plic_t(std::vector<processor_t*>& procs);
+  plic_t(std::vector<processor_t*>& procs, char *hart_config,
+    uint32_t hartid_base, uint32_t num_sources,
+    uint32_t num_priorities, uint32_t priority_base,
+    uint32_t pending_base, uint32_t enable_base,
+    uint32_t enable_stride, uint32_t context_base,
+    uint32_t context_stride, uint32_t aperture_size);
+  bool load(reg_t addr, size_t len, uint8_t* bytes);
+  bool store(reg_t addr, size_t len, const uint8_t* bytes);
+  uint32_t plic_claim(uint32_t addrid);
+  void plic_set_pending(int irq, bool level);
+  void plic_set_claimed(int irq, bool level);
+  int plic_irqs_pending(uint32_t addrid);
+  uint32_t atomic_set_masked(uint32_t *a, uint32_t mask, uint32_t value);
+  void plic_update();
+
+ private:
+  SiFivePLICState plic;
+  std::vector<processor_t*>& procs;
 };
 
 class mmio_plugin_device_t : public abstract_device_t {

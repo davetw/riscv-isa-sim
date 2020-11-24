@@ -93,6 +93,16 @@ sim_t::sim_t(const char* isa, const char* priv, const char* varch,
     bus.add_device(clint_base, clint.get());
   }
 
+  plic.reset(new plic_t(procs));
+  reg_t plic_base;
+  reg_t plic_maxprio;
+  if (fdt_parse_plic((void *)dtb.c_str(), &plic_base, &plic_maxprio, "riscv,plic0") < 0) {
+    bus.add_device(PLIC_BASE, plic.get());
+  } else {
+    bus.add_device(plic_base, plic.get());
+  }
+
+
   //per core attribute
   int cpu_offset = 0, rc;
   size_t cpu_idx = 0;
