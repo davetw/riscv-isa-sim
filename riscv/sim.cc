@@ -93,15 +93,18 @@ sim_t::sim_t(const char* isa, const char* priv, const char* varch,
     bus.add_device(clint_base, clint.get());
   }
 
-  plic.reset(new plic_t(procs));
+  //handle plic
   reg_t plic_base;
+  reg_t plic_size;
   reg_t plic_maxprio;
-  if (fdt_parse_plic((void *)dtb.c_str(), &plic_base, &plic_maxprio, "riscv,plic0") < 0) {
-    bus.add_device(PLIC_BASE, plic.get());
+  reg_t plic_ndev;
+  if (fdt_parse_plic((void *)dtb.c_str(), &plic_base, &plic_size, &plic_maxprio,
+                     &plic_ndev, "riscv,plic0") < 0) {
+    assert(true && "Config plic failed");
   } else {
+    plic.reset(new plic_t(procs, plic_maxprio, plic_size, plic_ndev));
     bus.add_device(plic_base, plic.get());
   }
-
 
   //per core attribute
   int cpu_offset = 0, rc;
@@ -150,6 +153,7 @@ sim_t::sim_t(const char* isa, const char* priv, const char* varch,
 
     cpu_idx++;
   }
+
 
   if (cpu_idx != nprocs) {
       std::cerr << "core number in dts ("

@@ -85,7 +85,8 @@ class clint_t : public abstract_device_t {
 
 class plic_t: public abstract_device_t {
  public:
-  plic_t(std::vector<processor_t*>& procs);
+  plic_t(std::vector<processor_t*>& procs, reg_t num_priorities,
+         reg_t plic_size, reg_t plic_ndev);
   plic_t(std::vector<processor_t*>& procs, char *hart_config,
     uint32_t hartid_base, uint32_t num_sources,
     uint32_t num_priorities, uint32_t priority_base,
@@ -100,6 +101,7 @@ class plic_t: public abstract_device_t {
   int plic_irqs_pending(uint32_t addrid);
   uint32_t atomic_set_masked(uint32_t *a, uint32_t mask, uint32_t value);
   void plic_update();
+  void parse_hart_config();
 
  private:
   SiFivePLICState plic;

@@ -258,7 +258,9 @@ int fdt_get_next_subnode(void *fdt, int node)
   return fdt_next_subnode(fdt, node);
 }
 
-int fdt_parse_plic(void *fdt, reg_t *plic_addr, reg_t *plic_maxprio, const char *compatible)
+int fdt_parse_plic(void *fdt, reg_t *plic_addr, reg_t *plic_size,
+                   reg_t *plic_maxprio, reg_t* plic_ndev,
+                   const char *compatible)
 {
   int nodeoffset, rc, len;
 
@@ -269,20 +271,21 @@ int fdt_parse_plic(void *fdt, reg_t *plic_addr, reg_t *plic_maxprio, const char 
   if (nodeoffset < 0)
     return nodeoffset;
 
-  rc = fdt_get_node_addr_size(fdt, nodeoffset, plic_addr, NULL, "reg");
+  rc = fdt_get_node_addr_size(fdt, nodeoffset, plic_addr, plic_size, "reg");
   if (rc < 0 || !plic_addr)
     return -ENODEV;
 
   prop_maxprio = (fdt32_t *)fdt_getprop(fdt, nodeoffset, "riscv,max-priority", &len);
   if (!prop_maxprio || !len)
       return -EINVAL;
-  *plic_maxprio = *(reg_t *)prop_maxprio;
+  *plic_maxprio = fdt32_to_cpu(*prop_maxprio);
 
-  prop_ndev = (fdt32_t *)fdt_getprop(fdt, nodeoffset, "riscv,max-priority", &len);
+  prop_ndev = (fdt32_t *)fdt_getprop(fdt, nodeoffset, "riscv,ndev", &len);
   if (!prop_ndev || !len)
       return -EINVAL;
+  *plic_ndev = fdt32_to_cpu(*prop_ndev);
 
-  return 1;
+  return 0;
 }
 
 int fdt_parse_clint(void *fdt, reg_t *clint_addr,

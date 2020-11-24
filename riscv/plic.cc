@@ -5,9 +5,34 @@
 #include "mmu.h"
 
 
+static PLICMode char_to_mode(char c)
+{
+    switch (c) {
+    case 'U': return PLICMode_U;
+    case 'S': return PLICMode_S;
+    case 'H': return PLICMode_H;
+    case 'M': return PLICMode_M;
+    default:
+        fprintf(stderr, "plic: invalid mode '%c'", c);
+        exit(1);
+    }
+}
+
+static char mode_to_char(PLICMode m)
+{
+    switch (m) {
+    case PLICMode_U: return 'U';
+    case PLICMode_S: return 'S';
+    case PLICMode_H: return 'H';
+    case PLICMode_M: return 'M';
+    default: return '?';
+    }
+}
+
+
 void plic_t::plic_update()
 {
-    int addrid;
+    uint32_t addrid;
 
     /* raise irq on harts where this irq is enabled */
     for (addrid = 0; addrid < plic.num_addrs; addrid++) {
@@ -19,7 +44,7 @@ void plic_t::plic_update()
         }
         
         PLICMode mode = plic.addr_config[addrid].mode;
-        int level = plic_irqs_pending(addrid);
+        uint32_t level = plic_irqs_pending(addrid);
         switch (mode) {
         case PLICMode_M:
             //riscv_cpu_update_mip(RISCV_CPU(cpu), MIP_MEIP, BOOL_TO_MASK(level));
@@ -34,11 +59,59 @@ void plic_t::plic_update()
 
 }
 
+void plic_t::parse_hart_config()
+{
+    int addrid, hartid, modes;
+    const char *p;
+    char c;
+
+    /* count and validate hart/mode combinations */
+    addrid = 0, hartid = 0, modes = 0;
+    p = plic.hart_config;
+    while ((c = *p++)) {
+        if (c == ',') {
+            addrid += __builtin_popcount(modes);
+            modes = 0;
+            hartid++;
+        } else {
+            int m = 1 << char_to_mode(c);
+            if (modes == (modes | m)) {
+                fprintf(stderr,"plic: duplicate mode '%c' in config: %s",
+                             c, plic.hart_config);
+                exit(1);
+            }
+            modes |= m;
+        }
+    }
+    if (modes) {
+        addrid += __builtin_popcount(modes);
+    }
+    hartid++;
+
+    plic.num_addrs = addrid;
+    plic.num_harts = hartid;
+
+    /* store hart/mode combinations */
+    plic.addr_config = new PLICAddr[plic.num_addrs];
+    addrid = 0, hartid = plic.hartid_base;
+    p = plic.hart_config;
+    while ((c = *p++)) {
+        if (c == ',') {
+            hartid++;
+        } else {
+            plic.addr_config[addrid].addrid = addrid;
+            plic.addr_config[addrid].hartid = hartid;
+            plic.addr_config[addrid].mode = char_to_mode(c);
+            addrid++;
+        }
+    }
+}
+
 
 
 uint32_t plic_t::plic_claim(uint32_t addrid)
 {
-    int i, j;
+    uint32_t i, j;
     uint32_t max_irq = 0;
     uint32_t max_prio = plic.target_priority[addrid];
 
@@ -87,7 +160,7 @@ void plic_t::plic_set_claimed(int irq, bool level)
 
 int plic_t::plic_irqs_pending(uint32_t addrid)
 {
-    int i, j;
+    uint32_t i, j;
     for (i = 0; i < plic.bitfield_words; i++) {
         uint32_t pending_enabled_not_claimed =
             (plic.pending[i] & ~plic.claimed[i]) &
@@ -107,16 +180,28 @@ int plic_t::plic_irqs_pending(uint32_t addrid)
     return 0;
 }
 
-
-
-plic_t::plic_t(std::vector<processor_t*>& procs)
+plic_t::plic_t(std::vector<processor_t*>& procs, reg_t num_priorities,
+               reg_t plic_size, reg_t plic_ndev)
   : procs(procs) 
 {
+    plic.num_sources = plic_ndev;
+    plic.bitfield_words = (plic.num_sources + 31) >> 5;
+    plic.num_enables = plic.bitfield_words * plic.num_addrs;
     plic.pending = new uint32_t(plic.bitfield_words);
     plic.source_priority = new uint32_t(plic.num_sources);
     plic.target_priority = new uint32_t(plic.num_addrs);
     plic.claimed = new uint32_t(plic.bitfield_words);
     plic.enable = new uint32_t(plic.num_enables);
+
+    plic.hartid_base = 0;
+    plic.num_priorities = num_priorities;
+    plic.priority_base = 0x4;
+    plic.pending_base = 0x001000;
+    plic.enable_base = 0x002000;
+    plic.enable_stride = 0x80;
+    plic.context_base = 0x200000;
+    plic.context_stride = 0x1000;
+    plic.aperture_size = plic_size;
 }
 
 plic_t::plic_t(std::vector<processor_t*>& procs, 
