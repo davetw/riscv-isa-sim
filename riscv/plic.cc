@@ -181,10 +181,11 @@ int plic_t::plic_irqs_pending(uint32_t addrid)
 }
 
 plic_t::plic_t(std::vector<processor_t*>& procs, reg_t num_priorities,
-               reg_t plic_size, reg_t plic_ndev)
+               reg_t plic_size, reg_t plic_ndev, char* plic_config)
   : procs(procs) 
 {
     plic.num_sources = plic_ndev;
+	plic.hart_config = plic_config;
     plic.bitfield_words = (plic.num_sources + 31) >> 5;
     plic.num_enables = plic.bitfield_words * plic.num_addrs;
     plic.pending = new uint32_t(plic.bitfield_words);
@@ -202,6 +203,8 @@ plic_t::plic_t(std::vector<processor_t*>& procs, reg_t num_priorities,
     plic.context_base = 0x200000;
     plic.context_stride = 0x1000;
     plic.aperture_size = plic_size;
+    
+    this->parse_hart_config();
 }
 
 plic_t::plic_t(std::vector<processor_t*>& procs, 

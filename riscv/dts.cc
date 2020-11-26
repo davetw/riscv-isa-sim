@@ -2,6 +2,7 @@
 
 #include "dts.h"
 #include "libfdt.h"
+#include <deque>
 #include <iostream>
 #include <sstream>
 #include <signal.h>
@@ -259,21 +260,22 @@ int fdt_get_next_subnode(void *fdt, int node)
 }
 
 int fdt_parse_plic(void *fdt, reg_t *plic_addr, reg_t *plic_size,
-                   reg_t *plic_maxprio, reg_t* plic_ndev,
+                   reg_t *plic_maxprio, reg_t* plic_ndev, char* plic_config,
                    const char *compatible)
 {
   int nodeoffset, rc, len;
 
   const fdt32_t* prop_maxprio;
   const fdt32_t* prop_ndev;
+  const fdt32_t* prop_interrupts_extended;
 
   nodeoffset = fdt_node_offset_by_compatible(fdt, -1, compatible);
   if (nodeoffset < 0)
     return nodeoffset;
 
-  rc = fdt_get_node_addr_size(fdt, nodeoffset, plic_addr, plic_size, "reg");
-  if (rc < 0 || !plic_addr)
-    return -ENODEV;
+  rc = fdt_get_node_addr_size(fdt, nodeoffset, plic_addr, plic_size, "");
+  if (!(rc < 0 || !plic_addr))
+    return 0;
 
   prop_maxprio = (fdt32_t *)fdt_getprop(fdt, nodeoffset, "riscv,max-priority", &len);
   if (!prop_maxprio || !len)
@@ -285,6 +287,40 @@ int fdt_parse_plic(void *fdt, reg_t *plic_addr, reg_t *plic_size,
       return -EINVAL;
   *plic_ndev = fdt32_to_cpu(*prop_ndev);
 
+  len = 0;
+  prop_interrupts_extended = (fdt32_t *)fdt_getprop(fdt, nodeoffset,
+                                                    "interrupts-extended", &len);
+  if (!prop_interrupts_extended || !len)
+      return -EINVAL;
+
+  std::map<uint32_t, std::string> hart_int_strs;
+  std::vector<uint32_t> harts;
+  std::deque<std::pair<uint32_t, uint32_t>> hart_int_mode;
+  for (uint32_t i=0; i<len/8; ++i) {
+    int llen;
+    auto cpu_offset = fdt_node_offset_by_phandle(fdt, fdt32_to_cpu(*(prop_interrupts_extended+i*2)));
+    auto int_level = fdt32_to_cpu(*(prop_interrupts_extended+i*2+1));
+    auto hart_id = fdt32_to_cpu(*(fdt32_t *)fdt_getprop(fdt,
+            fdt_parent_offset(fdt, cpu_offset), "reg", &llen));
+    hart_int_mode.push_back(std::make_pair(hart_id, int_level));
+    switch(int_level) {
+        case 9:
+            hart_int_strs[hart_id] += 'S';
+            break;
+        case 11:
+            hart_int_strs[hart_id] += 'M';
+            break;
+    }
+  }
+  for(auto hart_pair: hart_int_strs) { harts.push_back(hart_pair.first);}
+  std::sort(harts.begin(), harts.end());
+  std::string config;
+  for (auto hart: harts) {
+      if (!config.empty()) { config += ","; }
+      config += hart_int_strs[hart];
+  }
+
+  strcpy(plic_config, config.c_str());
   return 0;
 }
 

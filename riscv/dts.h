@@ -19,7 +19,8 @@ int fdt_get_first_subnode(void *fdt, int node);
 int fdt_get_next_subnode(void *fdt, int node);
 
 int fdt_parse_plic(void *fdt, reg_t *plic_addr, reg_t *plic_size, 
-                   reg_t *plic_maxprio, reg_t *plic_ndev, const char *compatible);
+                   reg_t *plic_maxprio, reg_t *plic_ndev, char* plic_config,
+                   const char *compatible);
 int fdt_parse_clint(void *fdt, reg_t *clint_addr,
                     const char *compatible);
 int fdt_parse_pmp_num(void *fdt, int cpu_offset, reg_t *pmp_num);

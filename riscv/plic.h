@@ -17,11 +17,7 @@ typedef struct PLICAddr {
 } PLICAddr;
 
 struct SiFivePLICState {
-    /*< private >*/
-    //SysBusDevice parent_obj;
-
     /*< public >*/
-    //MemoryRegion mmio;
     uint32_t num_addrs;
     uint32_t num_harts;
     uint32_t bitfield_words;

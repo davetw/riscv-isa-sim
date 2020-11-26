@@ -86,7 +86,7 @@ class clint_t : public abstract_device_t {
 class plic_t: public abstract_device_t {
  public:
   plic_t(std::vector<processor_t*>& procs, reg_t num_priorities,
-         reg_t plic_size, reg_t plic_ndev);
+         reg_t plic_size, reg_t plic_ndev, char* plic_config);
   plic_t(std::vector<processor_t*>& procs, char *hart_config,
     uint32_t hartid_base, uint32_t num_sources,
     uint32_t num_priorities, uint32_t priority_base,

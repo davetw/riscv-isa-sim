@@ -98,11 +98,13 @@ sim_t::sim_t(const char* isa, const char* priv, const char* varch,
   reg_t plic_size;
   reg_t plic_maxprio;
   reg_t plic_ndev;
+  char* plic_config;
+
   if (fdt_parse_plic((void *)dtb.c_str(), &plic_base, &plic_size, &plic_maxprio,
-                     &plic_ndev, "riscv,plic0") < 0) {
+                     &plic_ndev, plic_config, "riscv,plic0") < 0) {
     assert(true && "Config plic failed");
   } else {
-    plic.reset(new plic_t(procs, plic_maxprio, plic_size, plic_ndev));
+    plic.reset(new plic_t(procs, plic_maxprio, plic_size, plic_ndev, plic_config));
     bus.add_device(plic_base, plic.get());
   }
 
