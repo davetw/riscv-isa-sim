@@ -67,8 +67,10 @@ std::string make_dts(size_t insns_per_rtc_tick, size_t cpu_hz,
          "    };\n";
   }
   s <<   "  };\n";
-  for (auto& m : mems) {
+  for (size_t i = 0; i < mems.size(); ++i) {
+    auto &m = mems[i];
     s << std::hex <<
+         "  MEMORY" << i << ": " <<
          "  memory@" << m.first << " {\n"
          "    device_type = \"memory\";\n"
          "    reg = <0x" << (m.first >> 32) << " 0x" << (m.first & (uint32_t)-1) <<
