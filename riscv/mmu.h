@@ -11,6 +11,7 @@
 #include "processor.h"
 #include "memtracer.h"
 #include "byteorder.h"
+#include "devices.h"
 #include <stdlib.h>
 #include <vector>
 
@@ -450,6 +451,8 @@ private:
 
   reg_t pmp_homogeneous(reg_t addr, reg_t len);
   reg_t pmp_ok(reg_t addr, reg_t len, access_type type, reg_t mode);
+
+  bool wg_ok(reg_t addr, reg_t len, access_type type);
 
 #ifdef RISCV_ENABLE_DUAL_ENDIAN
   bool target_big_endian;

@@ -262,6 +262,24 @@ reg_t mmu_t::pmp_ok(reg_t addr, reg_t len, access_type type, reg_t mode)
   return mode == PRV_M;
 }
 
+bool mmu_t::wg_ok(reg_t addr, reg_t len, access_type type)
+{
+  if (!proc || (proc->wg_filters.empty() && proc->wg_pmps.empty()))
+    return true;
+
+  for (auto &dev : proc->wg_filters) {
+    if (dev->in_range(addr, len))
+      return dev->is_valid(proc->wg_marker->get_wid(), addr, len);
+  }
+
+  for (auto &dev : proc->wg_pmps) {
+    if (dev->in_range(addr, len))
+      return dev->is_valid(proc->wg_marker->get_wid(), addr, len, type);
+  }
+
+  return true;
+}
+
 reg_t mmu_t::pmp_homogeneous(reg_t addr, reg_t len)
 {
   if ((addr | len) & (len - 1))
