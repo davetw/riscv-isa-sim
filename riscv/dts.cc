@@ -1,5 +1,6 @@
 // See LICENSE for license details.
 
+#include <stdio.h>
 #include "dts.h"
 #include "libfdt.h"
 #include <deque>
@@ -388,3 +389,136 @@ int fdt_parse_mmu_type(void *fdt, int cpu_offset, char *mmu_type)
 
   return 0;
 }
+
+int fdt_parse_hartid(void *fdt, int cpu_offset, reg_t *hartid)
+{
+  int len, rc;
+  const void *prop;
+
+  if (!fdt || cpu_offset < 0)
+    return -EINVAL;
+
+  prop = fdt_getprop(fdt, cpu_offset, "device_type", &len);
+  if (!prop || !len)
+    return -EINVAL;
+  if (strncmp ((char *)prop, "cpu", strlen ("cpu")))
+    return -EINVAL;
+
+  rc = fdt_get_node_addr_size(fdt, cpu_offset, hartid, NULL, "reg");
+  if (rc < 0)
+    return -EINVAL;
+
+  return 0;
+}
+
+int fdt_parse_wg_marker(void *fdt,
+                        std::vector<std::tuple<reg_t, reg_t, reg_t>> &devs)
+{
+  int nodeoffset, rc;
+  const fdt32_t *prop;
+
+  const char *comp = "sifive,wgMarker";
+
+  nodeoffset = -1;
+  reg_t addr, size, hartid = 0;
+  const char *buf;
+  int len;
+  while ((nodeoffset = fdt_node_offset_by_compatible(fdt, nodeoffset, comp))
+          != -FDT_ERR_NOTFOUND) {
+    prop = (fdt32_t *)fdt_getprop(fdt, nodeoffset, "node", &len);
+    if (!prop)
+      return -EINVAL;
+
+    auto phandle = fdt32_to_cpu(prop[0]);
+    auto pidx = fdt_node_offset_by_phandle(fdt, phandle);
+    if (pidx >= 0) {
+      rc = fdt_parse_hartid(fdt, pidx, &hartid);
+      if (rc != 0)
+        return -EINVAL;
+    }
+
+    rc = fdt_get_node_addr_size(fdt, nodeoffset, &addr, &size, "reg");
+    if (rc < 0)
+      return -EINVAL;
+
+    devs.push_back(std::make_tuple(addr, size, hartid));
+  }
+
+  return 0;
+}
+
+int fdt_parse_wg_filter(void *fdt,
+                        std::vector<std::tuple<reg_t, reg_t, reg_t, reg_t>> &devs)
+{
+  int nodeoffset, rc;
+  const fdt32_t *prop;
+
+  const char *comp = "sifive,wgFilter";
+
+  nodeoffset = -1;
+  reg_t addr, size, node_addr, node_size;
+  const char *buf;
+  int len;
+  while ((nodeoffset = fdt_node_offset_by_compatible(fdt, nodeoffset, comp))
+          != -FDT_ERR_NOTFOUND) {
+    prop = (fdt32_t *)fdt_getprop(fdt, nodeoffset, "node", &len);
+    if (!prop)
+      return -EINVAL;
+
+    auto phandle = fdt32_to_cpu(prop[0]);
+    auto pidx = fdt_node_offset_by_phandle(fdt, phandle);
+    if (pidx < 0)
+      return -EINVAL;
+
+    rc = fdt_get_node_addr_size(fdt, pidx, &node_addr, &node_size, "reg");
+    if (rc != 0)
+      return -EINVAL;
+
+    rc = fdt_get_node_addr_size(fdt, nodeoffset, &addr, &size, "reg");
+    if (rc < 0)
+      return -EINVAL;
+
+    devs.push_back(std::make_tuple(addr, size, node_addr, node_size));
+  }
+
+  return 0;
+}
+
+int fdt_parse_wg_pmp(void *fdt,
+                     std::vector<std::tuple<reg_t, reg_t, reg_t, reg_t>> &devs)
+{
+  int nodeoffset, rc;
+  const fdt32_t *prop;
+
+  const char *comp = "sifive,wgpmp";
+
+  nodeoffset = -1;
+  reg_t addr, size, node_addr, node_size;
+  const char *buf;
+  int len;
+  while ((nodeoffset = fdt_node_offset_by_compatible(fdt, nodeoffset, comp))
+          != -FDT_ERR_NOTFOUND) {
+    prop = (fdt32_t *)fdt_getprop(fdt, nodeoffset, "node", &len);
+    if (!prop)
+      return -EINVAL;
+
+    auto phandle = fdt32_to_cpu(prop[0]);
+    auto pidx = fdt_node_offset_by_phandle(fdt, phandle);
+    if (pidx < 0)
+      return -EINVAL;
+
+    rc = fdt_get_node_addr_size(fdt, pidx, &node_addr, &node_size, "reg");
+    if (rc != 0)
+      return -EINVAL;
+
+    rc = fdt_get_node_addr_size(fdt, nodeoffset, &addr, &size, "reg");
+    if (rc < 0)
+      return -EINVAL;
+
+    devs.push_back(std::make_tuple(addr, size, node_addr, node_size));
+  }
+
+  return 0;
+}
+
+
