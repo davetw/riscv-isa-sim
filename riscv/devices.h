@@ -4,6 +4,7 @@
 #include "decode.h"
 #include "mmio_plugin.h"
 #include "plic.h"
+#include "memtracer.h"
 #include <cstdlib>
 #include <string>
 #include <map>
@@ -11,6 +12,7 @@
 #include <stdexcept>
 
 class processor_t;
+class sim_t;
 
 class abstract_device_t {
  public:
@@ -121,4 +123,55 @@ class mmio_plugin_device_t : public abstract_device_t {
   void* user_data;
 };
 
+class wg_marker_t : public abstract_device_t {
+ public:
+  wg_marker_t(const sim_t *sim, processor_t* proc, uint32_t wid, uint32_t wid_trusted);;
+  bool load(reg_t addr, size_t len, uint8_t* bytes);
+  bool store(reg_t addr, size_t len, const uint8_t* bytes);
+
+  uint32_t get_wid() { return wid;}
+
+ private:
+  const sim_t *sim;
+  processor_t *proc;
+  uint32_t wid;
+  uint32_t wid_trusted;
+  uint32_t lock;
+};
+
+class wg_filter_t : public abstract_device_t {
+ public:
+  wg_filter_t(const sim_t *sim, uint32_t wid, uint32_t wid_trusted,
+              uint64_t addr, uint64_t size);
+  bool load(reg_t addr, size_t len, uint8_t* bytes);
+  bool store(reg_t addr, size_t len, const uint8_t* bytes);
+
+  bool is_valid(uint32_t wid, uint64_t addr, uint64_t len);
+  bool in_range(uint64_t addr, uint64_t len);
+
+ private:
+  const sim_t *sim;
+  uint32_t wid;
+  uint32_t wid_trusted;
+  uint64_t addr;
+  uint64_t size;
+};
+
+class wg_pmp_t : public abstract_device_t {
+ public:
+  wg_pmp_t(const sim_t *sim, uint32_t wid_trusted,
+           uint64_t addr, uint64_t size);
+  bool load(reg_t addr, size_t len, uint8_t* bytes);
+  bool store(reg_t addr, size_t len, const uint8_t* bytes);
+
+  bool is_valid(uint32_t wid, uint64_t addr, uint64_t len, access_type type);
+  bool in_range(uint64_t addr, uint64_t len);
+
+ private:
+  const sim_t *sim;
+  uint32_t wid_trusted;
+  std::vector<std::tuple<uint32_t, uint64_t, uint64_t, uint32_t>> blks;
+  uint64_t addr;
+  uint64_t size;
+};
 #endif

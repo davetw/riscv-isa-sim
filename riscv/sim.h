@@ -53,6 +53,7 @@ public:
   const char* get_dts() { if (dts.empty()) reset(); return dts.c_str(); }
   processor_t* get_core(size_t i) { return procs.at(i); }
   unsigned nprocs() const { return procs.size(); }
+  processor_t* get_current_core() const { return procs.at(current_proc); }
 
   // Callback for processors to let the simulation know they were reset.
   void proc_reset(unsigned id);

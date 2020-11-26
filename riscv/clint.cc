@@ -1,6 +1,7 @@
 #include <sys/time.h>
 #include "devices.h"
 #include "processor.h"
+#include "sim.h"
 
 clint_t::clint_t(std::vector<processor_t*>& procs, uint64_t freq_hz, bool real_time)
   : procs(procs), freq_hz(freq_hz), real_time(real_time), mtime(0), mtimecmp(procs.size())
@@ -87,3 +88,240 @@ void clint_t::increment(reg_t inc)
       procs[i]->state.mip |= MIP_MTIP;
   }
 }
+
+static inline bool is_cover(uint64_t base, uint64_t len, uint64_t req_addr, uint64_t req_len)
+{
+    if (base <= req_addr && (req_addr + req_len) <= (base + len))
+      return true;
+
+    return false;
+}
+
+//wg_markker_t
+wg_marker_t::wg_marker_t(const sim_t *sim, processor_t *proc,
+                         uint32_t wid, uint32_t wid_trusted)
+  : sim(sim),
+    proc(proc),
+    wid(0),
+    wid_trusted(wid_trusted),
+    lock(0)
+{
+    if (wid > wid_trusted) {
+      fprintf(stderr, "wrong wid(%u), > wid_trusted(%u)\n", wid, wid_trusted);
+      exit(1);
+    } 
+
+    wid |= 1ul << wid;
+}
+
+bool wg_marker_t::load(reg_t addr, size_t len, uint8_t* bytes)
+{
+  if ((sim->get_current_core()->wg_marker->get_wid() & (1ul <<  wid_trusted)) == 0)
+    return false;
+
+  if (addr >= 0 && addr + len <= 4) {
+    memcpy(bytes, &wid, len);
+    return true;
+  } else if (addr >= 4 && addr + len <= 8) {
+    memcpy(bytes, &lock, len);
+    return true;
+  }
+
+  return false;
+}
+
+bool wg_marker_t::store(reg_t addr, size_t len, const uint8_t* bytes)
+{
+  if ((sim->get_current_core()->wg_marker->get_wid() & (1ul <<  wid_trusted)) == 0)
+    return false;
+
+  if (addr >= 0 && addr + len <= 4) {
+    memcpy(&wid, bytes, len);
+    return true;
+  } else if (addr >= 4 && addr + len <= 8) {
+    if (lock)
+      return false;
+
+    memcpy(&lock, bytes, len);
+    return true;
+  }
+
+  return false;
+}
+
+//wg_filter_t
+wg_filter_t::wg_filter_t(const sim_t *sim, uint32_t wid, uint32_t wid_trusted,
+                         uint64_t addr, uint64_t size)
+  : sim(sim),
+    wid(wid),
+    wid_trusted(wid_trusted),
+    addr(addr),
+    size(size)
+{
+    if (wid >= wid_trusted) {
+      fprintf(stderr, "wrong wid(%u), > wid_trusted(%u)\n", wid, wid_trusted);
+      exit(1);
+    } 
+
+    wid |= 1ul << wid;
+}
+
+bool wg_filter_t::load(reg_t addr, size_t len, uint8_t* bytes)
+{
+  if ((sim->get_current_core()->wg_marker->get_wid() & (1ul << wid_trusted)) == 0)
+    return false;
+
+  if (addr >= 0 && addr + len <= 4) {
+    memcpy(bytes, &wid, 4);
+    return true;
+  }
+
+  return false;
+}
+
+bool wg_filter_t::store(reg_t addr, size_t len, const uint8_t* bytes)
+{
+  if ((sim->get_current_core()->wg_marker->get_wid() & (1ul << wid_trusted)) == 0)
+    return false;
+
+  if (addr >= 0 && addr + len <= 4) {
+    memcpy(&wid, bytes, 4);
+    return true;
+  }
+
+  return false;
+}
+
+bool wg_filter_t::is_valid(uint32_t req_wid, uint64_t req_addr, uint64_t req_len)
+{
+  if (req_wid == 0)
+    return false;
+
+  if (req_wid > wid_trusted)
+    return false;
+
+  if (wid & (1ul << req_wid) || req_wid == wid_trusted)
+      return true;
+
+  return false;
+}
+
+bool wg_filter_t::in_range(uint64_t req_addr, uint64_t req_len)
+{
+  return is_cover(addr, size, req_addr, req_len);
+}
+
+//wg_pmp_t
+wg_pmp_t::wg_pmp_t(const sim_t *sim, uint32_t wid_trusted,
+                   uint64_t addr, uint64_t size)
+  : sim(sim),
+    wid_trusted(wid_trusted),
+    addr(addr),
+    size(size)
+{
+  for (size_t idx = 0; idx < wid_trusted; ++idx) {
+    blks.push_back(std::make_tuple(0, 0, 0, 0));
+  }
+}
+
+bool wg_pmp_t::load(reg_t addr, size_t len, uint8_t* bytes)
+{
+  if ((sim->get_current_core()->wg_marker->get_wid() & (1ul << wid_trusted)) == 0)
+    return false;
+
+  auto blk_idx = addr / 0x18;
+
+  if (blk_idx >= blks.size())
+    return false;
+
+  if ((addr + len) >= blks.size() * 0x18)
+    return false;
+
+  auto &blk = blks[blk_idx];
+  addr -= blk_idx * 0x18;
+
+  if (addr >= 0 && (addr + len) <= 4) {
+    memcpy(bytes, &std::get<0>(blk), len);
+    return true;
+  } else if (addr >= 0x04 && (addr + len) <= 0x0c) {
+    memcpy(bytes, &std::get<0>(blk), len);
+    return true;
+  } else if (addr >= 0x0c && (addr + len) <= 0x14) {
+    memcpy(bytes, &std::get<0>(blk), len);
+    return true;
+  } else if (addr >= 0x14 && (addr + len) <= 0x18) {
+    memcpy(bytes, &std::get<0>(blk), len);
+    return true;
+  }
+
+  return false;
+}
+
+bool wg_pmp_t::store(reg_t addr, size_t len, const uint8_t* bytes)
+{
+  if ((sim->get_current_core()->wg_marker->get_wid() & (1ul << wid_trusted)) == 0)
+    return false;
+
+  auto blk_idx = addr / 0x18;
+
+  if (blk_idx >= blks.size())
+    return false;
+
+  if ((addr + len) >= blks.size() * 0x18)
+    return false;
+
+  auto &blk = blks[blk_idx];
+  addr -= blk_idx * 0x18;
+
+  if (std::get<3>(blk))
+    return false;
+
+  if (addr >= 0 && (addr + len) <= 4) {
+    memcpy(&std::get<0>(blk), bytes, len);
+    return true;
+  } else if (addr >= 0x04 && (addr + len) <= 0x0c) {
+    memcpy(&std::get<0>(blk), bytes, len);
+    return true;
+  } else if (addr >= 0x0c && (addr + len) <= 0x14) {
+    memcpy(&std::get<0>(blk), bytes, len);
+    return true;
+  } else if (addr >= 0x14 && (addr + len) <= 0x18) {
+    memcpy(&std::get<0>(blk), bytes, len);
+    return true;
+  }
+  return false;
+}
+
+bool wg_pmp_t::is_valid(uint32_t req_wid, uint64_t req_addr, uint64_t req_len,
+                        access_type type)
+{
+  if (req_wid == 0)
+    return false;
+
+  if (req_wid > wid_trusted)
+    return false;
+
+  for (auto blk : blks) {
+    auto wid = (std::get<0>(blk) >> (2 * req_wid)) & 0x3;
+    auto start = std::get<1>(blk) << 12;
+    auto end = (std::get<1>(blk) + std::get<2>(blk)) << 12;
+    if (start <= req_addr
+        && req_addr + req_len <= end) {
+      if (type == STORE) {
+        if (wid & 0x1)
+          return true;
+      } else  {
+        if (wid & 0x2)
+          return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+bool wg_pmp_t::in_range(uint64_t req_addr, uint64_t req_len)
+{
+  return is_cover(addr, size, req_addr, req_len);
+}
+
