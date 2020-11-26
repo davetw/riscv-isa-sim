@@ -164,6 +164,89 @@ sim_t::sim_t(const char* isa, const char* priv, const char* varch,
                 << nprocs << ").\n";
       exit(1);
   }
+
+  //handle worldguarad
+  std::vector<std::tuple<reg_t, reg_t, reg_t>> marker_devs;
+  rc = fdt_parse_wg_marker(fdt, marker_devs);
+  if (rc != 0) {
+    std::cerr << "parse worldguard marker failed" << "\n";
+    exit(1);
+  }
+
+  for (auto dev : marker_devs) {
+    for (size_t i = 0; i < nprocs; i++) {
+      auto hartid = procs[i]->get_id();
+      if (hartid == std::get<2>(dev))  {
+        procs[i]->wg_marker.reset(
+          new wg_marker_t(this, procs[i], hartid == 0 ? 15 : 0, 15));
+        bus.add_device(std::get<0>(dev), procs[i]->wg_marker.get());
+      fprintf(stderr, "here 1: %lx %lx %lx\n",
+              std::get<0>(dev),
+              std::get<1>(dev),
+              std::get<2>(dev));
+        break;
+      }
+    }
+  }
+
+  std::vector<std::tuple<reg_t, reg_t, reg_t, reg_t>> filter_devs;
+  rc = fdt_parse_wg_filter(fdt, filter_devs);
+  if (rc != 0) {
+    std::cerr << "parse worldguard filter failed" << "\n";
+    exit(1);
+  }
+
+  procs[0]->wg_filters.resize(filter_devs.size());
+  for (size_t idx = 0; idx < filter_devs.size(); ++idx) {
+    procs[0]->wg_filters[idx] =
+      new wg_filter_t(this, 0, 15,
+                      std::get<2>(filter_devs[idx]),
+                      std::get<3>(filter_devs[idx])
+                     );
+      fprintf(stderr, "here 2: %lx %lx %lx %lx\n",
+              std::get<0>(filter_devs[idx]),
+              std::get<1>(filter_devs[idx]),
+              std::get<2>(filter_devs[idx]),
+              std::get<3>(filter_devs[idx]));
+  }
+
+  for (size_t i = 1; i < nprocs; i++) {
+    procs[i]->wg_filters.resize(filter_devs.size());
+    for (size_t idx = 0; idx < filter_devs.size(); ++idx) {
+      procs[i]->wg_filters[idx] = procs[0]->wg_filters[idx];
+    }
+  }
+
+  // wg_pmp
+  std::vector<std::tuple<reg_t, reg_t, reg_t, reg_t>> pmp_devs;
+  rc = fdt_parse_wg_pmp(fdt, pmp_devs);
+  if (rc != 0) {
+    std::cerr << "parse worldguard pmp failed" << "\n";
+    exit(1);
+  }
+
+  procs[0]->wg_pmps.resize(pmp_devs.size());
+  for (size_t idx = 0; idx < pmp_devs.size(); ++idx) {
+    procs[0]->wg_pmps[idx] =
+      new wg_pmp_t(this, 15,
+                   std::get<2>(pmp_devs[idx]),
+                   std::get<3>(pmp_devs[idx])
+                   );
+      fprintf(stderr, "here 3: %lx %lx %lx %lx\n",
+              std::get<0>(pmp_devs[idx]),
+              std::get<1>(pmp_devs[idx]),
+              std::get<2>(pmp_devs[idx]),
+              std::get<3>(pmp_devs[idx]));
+  }
+
+  for (size_t i = 1; i < nprocs; i++) {
+    procs[i]->wg_pmps.resize(pmp_devs.size());
+    for (size_t idx = 0; idx < pmp_devs.size(); ++idx) {
+      procs[i]->wg_pmps[idx] = procs[0]->wg_pmps[idx];
+    }
+  }
+
+  exit(0);
 }
 
 sim_t::~sim_t()

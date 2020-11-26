@@ -10,6 +10,7 @@
 #include <vector>
 #include <unordered_map>
 #include <map>
+#include <memory>
 #include <cassert>
 #include "debug_rom_defines.h"
 
@@ -542,6 +543,10 @@ public:
   };
 
   vectorUnit_t VU;
+
+  std::unique_ptr<wg_marker_t> wg_marker;
+  std::vector<wg_filter_t *> wg_filters;
+  std::vector<wg_pmp_t *> wg_pmps;
 };
 
 reg_t illegal_instruction(processor_t* p, insn_t insn, reg_t pc);
