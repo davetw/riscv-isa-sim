@@ -72,7 +72,8 @@ reg_t mmu_t::translate(reg_t addr, reg_t len, access_type type, uint32_t xlate_f
   }
 
   reg_t paddr = walk(addr, type, mode, virt, mxr) | (addr & (PGSIZE-1));
-  if (!pmp_ok(paddr, len, type, mode))
+  if (!pmp_ok(paddr, len, type, mode)
+      || !wg_ok(paddr,len, type))
     throw_access_exception(addr, type);
   return paddr;
 }
@@ -80,6 +81,9 @@ reg_t mmu_t::translate(reg_t addr, reg_t len, access_type type, uint32_t xlate_f
 tlb_entry_t mmu_t::fetch_slow_path(reg_t vaddr)
 {
   reg_t paddr = translate(vaddr, sizeof(fetch_temp), FETCH, 0);
+
+  if (!wg_ok(paddr, sizeof(fetch_temp), FETCH))
+    throw trap_instruction_access_fault(paddr, 0, 0);
 
   if (auto host_addr = sim->addr_to_mem(paddr)) {
     return refill_tlb(vaddr, paddr, host_addr, FETCH);
@@ -146,6 +150,9 @@ void mmu_t::load_slow_path(reg_t addr, reg_t len, uint8_t* bytes, uint32_t xlate
 {
   reg_t paddr = translate(addr, len, LOAD, xlate_flags);
 
+  if (!wg_ok(paddr, len, LOAD))
+    throw trap_load_access_fault(addr, 0, 0);
+
   if (auto host_addr = sim->addr_to_mem(paddr)) {
     memcpy(bytes, host_addr, len);
     if (tracer.interested_in_range(paddr, paddr + PGSIZE, LOAD))
@@ -175,6 +182,9 @@ void mmu_t::store_slow_path(reg_t addr, reg_t len, const uint8_t* bytes, uint32_
       throw *matched_trigger;
   }
 
+  if (!wg_ok(paddr, len, LOAD))
+    throw trap_store_access_fault(addr, 0, 0);
+
   if (auto host_addr = sim->addr_to_mem(paddr)) {
     memcpy(host_addr, bytes, len);
     if (tracer.interested_in_range(paddr, paddr + PGSIZE, STORE))
@@ -203,14 +213,19 @@ tlb_entry_t mmu_t::refill_tlb(reg_t vaddr, reg_t paddr, char* host_addr, access_
       (check_triggers_store && type == STORE))
     expected_tag |= TLB_CHECK_TRIGGERS;
 
-  if (pmp_homogeneous(paddr & ~reg_t(PGSIZE - 1), PGSIZE)) {
-    if (type == FETCH) tlb_insn_tag[idx] = expected_tag;
-    else if (type == STORE) tlb_store_tag[idx] = expected_tag;
-    else tlb_load_tag[idx] = expected_tag;
+  if (!has_wg()) {
+    if (pmp_homogeneous(paddr & ~reg_t(PGSIZE - 1), PGSIZE)) {
+      if (type == FETCH) tlb_insn_tag[idx] = expected_tag;
+      else if (type == STORE) tlb_store_tag[idx] = expected_tag;
+      else tlb_load_tag[idx] = expected_tag;
+    }
   }
 
   tlb_entry_t entry = {host_addr - vaddr, paddr - vaddr};
-  tlb_data[idx] = entry;
+
+  if (!has_wg())
+    tlb_data[idx] = entry;
+
   return entry;
 }
 
@@ -280,6 +295,14 @@ bool mmu_t::wg_ok(reg_t addr, reg_t len, access_type type)
   return true;
 }
 
+bool mmu_t::has_wg()
+{
+  if (!proc || (proc->wg_filters.empty() && proc->wg_pmps.empty()))
+    return false;
+
+  return true;
+}
+
 reg_t mmu_t::pmp_homogeneous(reg_t addr, reg_t len)
 {
   if ((addr | len) & (len - 1))
@@ -337,7 +360,9 @@ reg_t mmu_t::s2xlate(reg_t gva, reg_t gpa, access_type type, access_type trap_ty
     // check that physical address of PTE is legal
     auto pte_paddr = base + idx * vm.ptesize;
     auto ppte = sim->addr_to_mem(pte_paddr);
-    if (!ppte || !pmp_ok(pte_paddr, vm.ptesize, LOAD, PRV_S)) {
+    if (!ppte
+        || !pmp_ok(pte_paddr, vm.ptesize, LOAD, PRV_S)
+        || !wg_ok(pte_paddr, vm.ptesize, LOAD)) {
       throw_access_exception(gva, trap_type);
     }
 
@@ -418,7 +443,10 @@ reg_t mmu_t::walk(reg_t addr, access_type type, reg_t mode, bool virt, bool mxr)
     // check that physical address of PTE is legal
     auto pte_paddr = s2xlate(addr, base + idx * vm.ptesize, LOAD, type, virt, false);
     auto ppte = sim->addr_to_mem(pte_paddr);
-    if (!ppte || !pmp_ok(pte_paddr, vm.ptesize, LOAD, PRV_S))
+    if (!ppte
+        || !pmp_ok(pte_paddr, vm.ptesize, LOAD, PRV_S)
+        || !wg_ok(pte_paddr, vm.ptesize, LOAD))
+
       throw_access_exception(addr, type);
 
     reg_t pte = vm.ptesize == 4 ? from_target(*(target_endian<uint32_t>*)ppte) : from_target(*(target_endian<uint64_t>*)ppte);

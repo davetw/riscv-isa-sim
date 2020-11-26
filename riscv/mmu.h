@@ -453,6 +453,7 @@ private:
   reg_t pmp_ok(reg_t addr, reg_t len, access_type type, reg_t mode);
 
   bool wg_ok(reg_t addr, reg_t len, access_type type);
+  bool has_wg();
 
 #ifdef RISCV_ENABLE_DUAL_ENDIAN
   bool target_big_endian;
