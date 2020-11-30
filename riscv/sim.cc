@@ -104,10 +104,13 @@ sim_t::sim_t(const char* isa, const char* priv, const char* varch,
                      &plic_ndev, plic_config, "riscv,plic0") < 0) {
     assert(true && "Config plic failed");
   } else {
-    plic.reset(new plic_t(procs, plic_maxprio, plic_size, plic_ndev, plic_config));
+    auto _plic = new plic_t(procs, plic_maxprio, plic_size, plic_ndev, plic_config);
+    plic.reset(_plic);
     bus.add_device(plic_base, plic.get());
+    _plic->plic_print_status();
   }
 
+  
   //per core attribute
   int cpu_offset = 0, rc;
   size_t cpu_idx = 0;

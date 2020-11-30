@@ -103,6 +103,7 @@ class plic_t: public abstract_device_t {
   int plic_irqs_pending(uint32_t addrid);
   uint32_t atomic_set_masked(uint32_t *a, uint32_t mask, uint32_t value);
   void plic_update();
+  void plic_print_status();
   void parse_hart_config();
 
  private:

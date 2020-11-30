@@ -29,6 +29,36 @@ static char mode_to_char(PLICMode m)
     }
 }
 
+void plic_t::plic_print_status()
+{
+    int i;
+    int addrid;
+
+    /* pending */
+    fprintf(stderr, "pending       : ");
+    for (i = plic.bitfield_words - 1; i >= 0; i--) {
+        fprintf(stderr, "%08x", plic.pending[i]);
+    }
+    fprintf(stderr, "\n");
+
+    /* pending */
+    fprintf(stderr, "claimed       : ");
+    for (i = plic.bitfield_words - 1; i >= 0; i--) {
+        fprintf(stderr, "%08x", plic.claimed[i]);
+    }
+    fprintf(stderr, "\n");
+
+    for (addrid = 0; addrid < plic.num_addrs; addrid++) {
+        fprintf(stderr, "hart%d-%c enable: ",
+            plic.addr_config[addrid].hartid,
+            mode_to_char(plic.addr_config[addrid].mode));
+        for (i = plic.bitfield_words - 1; i >= 0; i--) {
+            fprintf(stderr, "%08x", plic.enable[addrid * plic.bitfield_words + i]);
+        }
+        fprintf(stderr, "\n");
+    }
+
+}
 
 void plic_t::plic_update()
 {
@@ -37,7 +67,6 @@ void plic_t::plic_update()
     /* raise irq on harts where this irq is enabled */
     for (addrid = 0; addrid < plic.num_addrs; addrid++) {
         uint32_t hartid = plic.addr_config[addrid].hartid;
-        
         processor_t *cpu = procs[hartid];
         if (!cpu) {
             continue;
@@ -182,17 +211,18 @@ int plic_t::plic_irqs_pending(uint32_t addrid)
 
 plic_t::plic_t(std::vector<processor_t*>& procs, reg_t num_priorities,
                reg_t plic_size, reg_t plic_ndev, char* plic_config)
-  : procs(procs) 
+  : procs(procs)
 {
     plic.num_sources = plic_ndev;
-	plic.hart_config = plic_config;
+    plic.hart_config = plic_config;
     plic.bitfield_words = (plic.num_sources + 31) >> 5;
     plic.num_enables = plic.bitfield_words * plic.num_addrs;
-    plic.pending = new uint32_t(plic.bitfield_words);
-    plic.source_priority = new uint32_t(plic.num_sources);
-    plic.target_priority = new uint32_t(plic.num_addrs);
-    plic.claimed = new uint32_t(plic.bitfield_words);
-    plic.enable = new uint32_t(plic.num_enables);
+    plic.pending = new uint32_t[plic.bitfield_words]();
+    plic.source_priority = new uint32_t[plic.num_sources]();
+    plic.target_priority = new uint32_t[plic.num_addrs]();
+    plic.claimed = new uint32_t[plic.bitfield_words]();
+    plic.enable = new uint32_t[plic.num_enables]();
+
 
     plic.hartid_base = 0;
     plic.num_priorities = num_priorities;
